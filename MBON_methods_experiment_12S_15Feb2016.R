@@ -9,6 +9,7 @@ library(DESeq2)
 library(vegan)
 library(ggplot2)
 
+#SET PATHS TO INPUT FILES
 OTU_table="/Users/jport/Desktop/Analysis_20160202_2050_SERVER/OTU_table.csv" #12S
 #OTU_table="/Users/jport/Desktop/18S_kelp_MBON_methods/OTU_table.csv" #18S
 metadata="/Users/jport/Desktop/MiSeq_MBON_ExtFilt_MontBay_Metadata.csv" #12S
@@ -139,11 +140,15 @@ ggplot(datasheet_binary, aes(x=filter_type, y=binsum))+geom_boxplot()+theme_clas
 #by filter type within extraction method
 ggplot(datasheet_binary, aes(x=extraction_method, y=binsum, fill=filter_type))+geom_boxplot()+theme_classic()+ylab("No. of OTUs")+xlab("Extraction method")+theme(legend.position=c(.88,.8))+theme(legend.text=element_text(size=10))+theme(legend.key.size = unit(.5, "cm"))
 
+        #multiple linear regression
+        lmfit = lm(formula = binsum~extraction_method+filter_type+dilution+extraction_method:filter_type, data = datasheet_binary)
+
         #Statistical tests to compare methods (mann-whitney to compare 2 groups, kruskal wallis to compare 3 or more groups) 
         kruskal.test(dneasy$binsum~filter_type, data=dneasy) #by filter type within extraction method 
         kruskal.test(binsum~filter_type, data=mobio) #by filter type within extraction method 
         kruskal.test(binsum~filter_type, data=pc) #by filter type within extraction method
 
+        
 #by dilution factor
 boxplot(binsum~dilution, data=datasheet_binary)
 
@@ -153,7 +158,11 @@ boxplot(binsum~dilution, data=datasheet_binary)
 
         #statistical test: does species richness differ between dilution factors? 
         kruskal.test(binsum~dilution, data=datasheet_binary) #is sample size large enough to run this test?
+
         
+#################################################################################################################
+#6. GENERATE PLOTS COMPARING COMMUNITY COMPOSITION AND ASSOCIATED STATS
+#################################################################################################################
 #Hierarchical clustering
 dist=vegdist(datasheet_binary[,c(metadata_col:ncol(datasheet_binary))], method="bray")
 clust.res=hclust(dist, method="average")
@@ -170,34 +179,25 @@ dna.mds <- metaMDS(datasheet_binary[,c(metadata_col:ncol(datasheet_binary))], di
 
           orditorp(dna.mds,display="sites")
           
+#PERMANOVA (Adonis in R)
+          #format datasheet_binary for adonis
+          datasheet_binary_sorted = datasheet_binary[order(datasheet_binary$extraction_method, datasheet_binary$filter_type),]
+          
+          #Do community compositions differ significantly across extraction methods?
+          betahigh = betadiver(datasheet_binary_sorted[,c(12:ncol(datasheet_binary_sorted))], "z")
+          adonis(betahigh ~ extraction_method, data= datasheet_binary_sorted, method="bray", perm=500) #make sure no NA in datasheet
+          #pairwise comparison between two extraction methods? (repeat for all three, dneasy v mobio, dneasy v pc, mobio v pc)
+          betahigh = betadiver(datasheet_binary_sorted[c(1:47),c(12:ncol(datasheet_binary_sorted))], "z")
+          adonis(betahigh ~ extraction_method[1:47], data= datasheet_binary_sorted, method="bray", perm=500) #make sure no NA in datasheet
 
+          #Do community compositions differ significantly across filter types?
+          betahigh = betadiver(datasheet_binary_sorted[,c(12:ncol(datasheet_binary_sorted))], "z")
+          adonis(betahigh ~ filter_type, data= datasheet_binary_sorted, method="bray", perm=500) #make sure no NA in datasheet
+
+#################################################################################################################
+#EXTRA
+          
 #Subset data table by extraction method
 dneasy=subset(datasheet_binary, datasheet_binary$extraction_method=="DNEASY")
 mobio=subset(datasheet_binary, datasheet_binary$extraction_method=="MOBIO")
 pc=subset(datasheet_binary, datasheet_binary$extraction_method=="PC")
-
-
-
-
-#################################################################################################################
-#GENERATE PLOTS AND STATS COMPARING COMMUNITY COMPOSITION ACROSS METHODS
-#################################################################################################################
-
-datasheet=cbind(sample_metadata[,1:8], deseqtable) 
-adonis(datasheet[,c(9:ncol(datasheet))] ~ datasheet$extraction_method, method="bray", perm=500) #make sure no NA in datasheet
-
-#################################################################################################################
-#UNUSED CODE
-#################################################################################################################
-
-#make table of only taxon counts
-taxontable_counts=taxontable[,c(9:length(taxontable))]
-
-#plot distribution of counts by sample type (e.g. env, pos, neg)
-boxplot(sumrows~Sample_Type, data=taxontable)
-
-#Plot total DNA concentrations
-##grouped by extraction method
-ggplot(na.omit(dna2), aes(x = ext, y= conc, fill=location)) + geom_boxplot()+scale_fill_manual(values = rep(k, 3))+xlab("Extraction Method")+ylab("DNA Concentration (ng/ul)")+theme_bw()+theme(legend.position = c(0.8, .91))+theme(axis.text=element_text(size=17), legend.text=element_text(size=18), text=element_text(size=16))
-##grouped by location
-ggplot(na.omit(dna2), aes(x = location, y= conc, fill=ext)) + geom_boxplot()+scale_fill_manual(values = rep(k,2))+xlab("Sample")+ylab("Total DNA Concentration (ng/ul)")+theme_bw()+theme(legend.position = c(0.8, .85))+theme(axis.text=element_text(size=18), legend.text=element_text(size=20), text=element_text(size=20), axis.title.x=element_text(vjust=0.0001), axis.title.y=element_text(vjust=1.3))
